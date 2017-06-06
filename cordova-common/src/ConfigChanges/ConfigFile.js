@@ -16,18 +16,12 @@
 
 var fs = require('fs');
 var path = require('path');
-
-var modules = {};
-var addProperty = require('../util/addProperty');
-
-// Use delay loading to ensure plist and other node modules to not get loaded
-// on Android, Windows platforms
-addProperty(module, 'bplist', 'bplist-parser', modules);
-addProperty(module, 'et', 'elementtree', modules);
-addProperty(module, 'glob', 'glob', modules);
-addProperty(module, 'plist', 'plist', modules);
-addProperty(module, 'plist_helpers', '../util/plist-helpers', modules);
-addProperty(module, 'xml_helpers', '../util/xml-helpers', modules);
+var bplist = require('bplist-parser');
+var et = require('elementtree');
+var glob = require('glob');
+var plist = require('plist');
+var plist_helpers = require('../util/plist-helpers');
+var xml_helpers = require('../util/xml-helpers');
 
 /******************************************************************************
 * ConfigFile class
@@ -71,7 +65,7 @@ function ConfigFile_load() {
     // the same in a future release
     if (ext == '.xml' || ext == '.appxmanifest') {
         self.type = 'xml';
-        self.data = modules.xml_helpers.parseElementtreeSync(filepath);
+        self.data = xml_helpers.parseElementtreeSync(filepath);
     } else {
         // plist file
         self.type = 'plist';
@@ -80,8 +74,8 @@ function ConfigFile_load() {
         //       Do we still need to support binary plist?
         //       If yes, use plist.parseStringSync() and read the file once.
         self.data = isBinaryPlist(filepath) ?
-                modules.bplist.parseBuffer(fs.readFileSync(filepath)) :
-                modules.plist.parse(fs.readFileSync(filepath, 'utf8'));
+                bplist.parseBuffer(fs.readFileSync(filepath)) :
+                plist.parse(fs.readFileSync(filepath, 'utf8'));
     }
 }
 
@@ -92,7 +86,7 @@ ConfigFile.prototype.save = function ConfigFile_save() {
     } else {
         // plist
         var regExp = new RegExp('<string>[ \t\r\n]+?</string>', 'g');
-        fs.writeFileSync(self.filepath, modules.plist.build(self.data).replace(regExp, '<string></string>'));
+        fs.writeFileSync(self.filepath, plist.build(self.data).replace(regExp, '<string></string>'));
     }
     self.is_changed = false;
 };
@@ -102,26 +96,26 @@ ConfigFile.prototype.graft_child = function ConfigFile_graft_child(selector, xml
     var filepath = self.filepath;
     var result;
     if (self.type === 'xml') {
-        var xml_to_graft = [modules.et.XML(xml_child.xml)];
+        var xml_to_graft = [et.XML(xml_child.xml)];
         switch (xml_child.mode) {
             case 'merge':
-                result = modules.xml_helpers.graftXMLMerge(self.data, xml_to_graft, selector, xml_child);
+                result = xml_helpers.graftXMLMerge(self.data, xml_to_graft, selector, xml_child);
                 break;
             case 'overwrite':
-                result = modules.xml_helpers.graftXMLOverwrite(self.data, xml_to_graft, selector, xml_child);
+                result = xml_helpers.graftXMLOverwrite(self.data, xml_to_graft, selector, xml_child);
                 break;
             case 'remove':
-                result = modules.xml_helpers.pruneXMLRemove(self.data, selector, xml_to_graft);
+                result = xml_helpers.pruneXMLRemove(self.data, selector, xml_to_graft);
                 break;
             default:
-                result = modules.xml_helpers.graftXML(self.data, xml_to_graft, selector, xml_child.after);
+                result = xml_helpers.graftXML(self.data, xml_to_graft, selector, xml_child.after);
         }
         if ( !result) {
             throw new Error('Unable to graft xml at selector "' + selector + '" from "' + filepath + '" during config install');
         }
     } else {
         // plist file
-        result = modules.plist_helpers.graftPLIST(self.data, xml_child.xml, selector);
+        result = plist_helpers.graftPLIST(self.data, xml_child.xml, selector);
         if ( !result ) {
             throw new Error('Unable to graft plist "' + filepath + '" during config install');
         }
@@ -134,21 +128,21 @@ ConfigFile.prototype.prune_child = function ConfigFile_prune_child(selector, xml
     var filepath = self.filepath;
     var result;
     if (self.type === 'xml') {
-        var xml_to_graft = [modules.et.XML(xml_child.xml)];
+        var xml_to_graft = [et.XML(xml_child.xml)];
         switch (xml_child.mode) {
             case 'merge':
             case 'overwrite':
-                result = modules.xml_helpers.pruneXMLRestore(self.data, selector, xml_child);
+                result = xml_helpers.pruneXMLRestore(self.data, selector, xml_child);
                 break;
             case 'remove':
-                result = modules.xml_helpers.pruneXMLRemove(self.data, selector, xml_to_graft);
+                result = xml_helpers.pruneXMLRemove(self.data, selector, xml_to_graft);
                 break;
             default:
-                result = modules.xml_helpers.pruneXML(self.data, xml_to_graft, selector);
+                result = xml_helpers.pruneXML(self.data, xml_to_graft, selector);
         }
     } else {
         // plist file
-        result = modules.plist_helpers.prunePLIST(self.data, xml_child.xml, selector);
+        result = plist_helpers.prunePLIST(self.data, xml_child.xml, selector);
     }
     if (!result) {
         var err_msg = 'Pruning at selector "' + selector + '" from "' + filepath + '" went bad.';
@@ -166,7 +160,7 @@ function resolveConfigFilePath(project_dir, platform, file) {
 
     if (file.indexOf('*') > -1) {
         // handle wildcards in targets using glob.
-        matches = modules.glob.sync(path.join(project_dir, '**', file));
+        matches = glob.sync(path.join(project_dir, '**', file));
         if (matches.length) filepath = matches[0];
 
         // [CB-5989] multiple Info.plist files may exist. default to $PROJECT_NAME-Info.plist
@@ -193,7 +187,7 @@ function resolveConfigFilePath(project_dir, platform, file) {
         } else if (platform == 'android') {
             filepath = path.join(project_dir, 'res', 'xml', 'config.xml');
         } else {
-            matches = modules.glob.sync(path.join(project_dir, '**', 'config.xml'));
+            matches = glob.sync(path.join(project_dir, '**', 'config.xml'));
             if (matches.length) filepath = matches[0];
         }
         return filepath;
@@ -212,7 +206,7 @@ function resolveConfigFilePath(project_dir, platform, file) {
 // Find out the real name of an iOS project
 // TODO: glob is slow, need a better way or caching, or avoid using more than once.
 function getIOSProjectname(project_dir) {
-    var matches = modules.glob.sync(path.join(project_dir, '*.xcodeproj'));
+    var matches = glob.sync(path.join(project_dir, '*.xcodeproj'));
     var iospath;
     if (matches.length === 1) {
         iospath = path.basename(matches[0],'.xcodeproj');

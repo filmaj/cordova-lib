@@ -17,31 +17,23 @@
     under the License.
 */
 
-var addProperty = require('./src/util/addProperty');
-
-module.exports = { };
-
-addProperty(module, 'events', './src/events');
-addProperty(module, 'superspawn', './src/superspawn');
-
-addProperty(module, 'ActionStack', './src/ActionStack');
-addProperty(module, 'CordovaError', './src/CordovaError/CordovaError');
-addProperty(module, 'CordovaLogger', './src/CordovaLogger');
-addProperty(module, 'CordovaCheck', './src/CordovaCheck');
-addProperty(module, 'CordovaExternalToolErrorContext', './src/CordovaError/CordovaExternalToolErrorContext');
-addProperty(module, 'PlatformJson', './src/PlatformJson');
-addProperty(module, 'ConfigParser', './src/ConfigParser/ConfigParser');
-addProperty(module, 'FileUpdater', './src/FileUpdater');
-
-addProperty(module, 'PluginInfo', './src/PluginInfo/PluginInfo');
-addProperty(module, 'PluginInfoProvider', './src/PluginInfo/PluginInfoProvider');
-
-addProperty(module, 'PluginManager', './src/PluginManager');
-
-addProperty(module, 'ConfigChanges', './src/ConfigChanges/ConfigChanges');
-addProperty(module, 'ConfigKeeper', './src/ConfigChanges/ConfigKeeper');
-addProperty(module, 'ConfigFile', './src/ConfigChanges/ConfigFile');
-addProperty(module, 'mungeUtil', './src/ConfigChanges/munge-util');
-
-addProperty(module, 'xmlHelpers', './src/util/xml-helpers');
-
+module.exports = {
+    'events': require('./src/events'),
+    'superspawn': require('./src/superspawn'),
+    'ActionStack': require('./src/ActionStack'),
+    'CordovaError': require('./src/CordovaError/CordovaError'),
+    'CordovaLogger': require('./src/CordovaLogger'),
+    'CordovaCheck': require('./src/CordovaCheck'),
+    'CordovaExternalToolErrorContext': require('./src/CordovaError/CordovaExternalToolErrorContext'),
+    'PlatformJson': require('./src/PlatformJson'),
+    'ConfigParser': require('./src/ConfigParser/ConfigParser'),
+    'FileUpdater': require('./src/FileUpdater'),
+    'PluginInfo': require('./src/PluginInfo/PluginInfo'),
+    'PluginInfoProvider': require('./src/PluginInfo/PluginInfoProvider'),
+    'PluginManager': require('./src/PluginManager'),
+    'ConfigChanges': require('./src/ConfigChanges/ConfigChanges'),
+    'ConfigKeeper': require('./src/ConfigChanges/ConfigKeeper'),
+    'ConfigFile': require('./src/ConfigChanges/ConfigFile'),
+    'mungeUtil': require('./src/ConfigChanges/munge-util'),
+    'xmlHelpers': require('./src/util/xml-helpers'),
+};
