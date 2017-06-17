@@ -161,6 +161,7 @@ describe('(save flag)', function () {
         }, BIG_TIMEOUT);
     });
 
+    // TODO: the specs in spec-cordova/platform/addHelper cover a lot of this entire describe block. these tests can be moved there.
     describe('platform add --save', function () {
         it('Test 004 : spec.1 should support custom tgz files', function (done) {
             helpers.removeEngine(appPath, platformName);
