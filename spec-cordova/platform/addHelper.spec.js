@@ -582,32 +582,5 @@ describe('cordova/platform/addHelper', function () {
             })
             .fin(done);
         });
-
-        it('throws if the target list is undefined', function (done) {
-            var targets; // = undefined;
-            platform.add(hooksRunnerMock, projectRoot, targets, {})
-            .then(false)
-            .fail(function (error) {
-                expect(error.message).toBe('No platform specified. Please specify a platform to add. See `cordova platform list`.');
-            }).fin(done);
-        });
-
-        it('throws if the target list is null', function (done) {
-            var targets = null; // = undefined;
-            platform.add(hooksRunnerMock, projectRoot, targets, {})
-            .then(false)
-            .fail(function (error) {
-                expect(error.message).toBe('No platform specified. Please specify a platform to add. See `cordova platform list`.');
-            }).fin(done);
-        });
-
-        it('throws if the target list is empty', function (done) {
-            var targets = []; // = undefined;
-            platform.add(hooksRunnerMock, projectRoot, targets, {})
-            .then(false)
-            .fail(function (error) {
-                expect(error.message).toBe('No platform specified. Please specify a platform to add. See `cordova platform list`.');
-            }).fin(done);
-        });
     });
 });
