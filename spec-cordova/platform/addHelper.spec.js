@@ -23,7 +23,7 @@ var shell = require('shelljs');
 var events = require('cordova-common').events;
 var rewire = require('rewire');
 var platform_addHelper = rewire('../../src/cordova/platform/addHelper');
-var prepare = require('../../src/cordova/prepare');
+var platform_module = require('../../src/cordova/platform');
 var platform_metadata = require('../../src/cordova/platform_metadata');
 var cordova_util = require('../../src/cordova/util');
 var cordova_config = require('../../src/cordova/config');
@@ -32,12 +32,22 @@ var fetch_metadata = require('../../src/plugman/util/metadata');
 
 describe('cordova/platform/addHelper', function () {
     var projectRoot = '/some/path';
+    // These _mock and _revert_mock objects use rewire as the modules these mocks replace
+    // during testing all return functions, which we cannot spy on using jasmine.
+    // Thus, we replace these modules inside the scope of addHelper.js using rewire, and shim
+    // in these _mock test dummies. The test dummies themselves are constructed using
+    // jasmine.createSpy inside the first beforeEach.
     var cfg_parser_mock = function () {};
     var cfg_parser_revert_mock;
     var hooks_mock;
     var platform_api_mock;
     var fetch_mock;
     var fetch_revert_mock;
+    var prepare_mock;
+    var prepare_revert_mock;
+    var fake_platform = {
+        'platform': 'atari'
+    };
     beforeEach(function () {
         hooks_mock = jasmine.createSpyObj('hooksRunner mock', ['fire']);
         hooks_mock.fire.and.returnValue(Q());
@@ -45,31 +55,36 @@ describe('cordova/platform/addHelper', function () {
         cfg_parser_revert_mock = platform_addHelper.__set__('ConfigParser', cfg_parser_mock);
         fetch_mock = jasmine.createSpy('fetch mock').and.returnValue(Q());
         fetch_revert_mock = platform_addHelper.__set__('fetch', fetch_mock);
+        prepare_mock = jasmine.createSpy('prepare mock').and.returnValue(Q());
+        prepare_mock.preparePlatforms = jasmine.createSpy('preparePlatforms mock').and.returnValue(Q());
+        prepare_revert_mock = platform_addHelper.__set__('prepare', prepare_mock);
         spyOn(shell, 'mkdir');
         spyOn(fs, 'existsSync').and.returnValue(false);
         spyOn(fs, 'writeFileSync');
         spyOn(cordova_util, 'projectConfig').and.returnValue(path.join(projectRoot, 'config.xml'));
         spyOn(cordova_util, 'isDirectory').and.returnValue(false);
+        spyOn(cordova_util, 'fixRelativePath').and.callFake(function (input) { return input; });
         spyOn(cordova_util, 'isUrl').and.returnValue(false);
         spyOn(cordova_util, 'hostSupports').and.returnValue(true);
         spyOn(cordova_util, 'removePlatformPluginsJson');
         spyOn(cordova_config, 'read').and.returnValue({});
-        // Fake platform details we will use for our mocks
-        spyOn(platform_addHelper, 'downloadPlatform').and.returnValue(Q({
-            'platform': 'atari'
-        }));
+        // Fake platform details we will use for our mocks, returned by either
+        // getPlatfromDetailsFromDir (in the local-directory case), or
+        // downloadPlatform (in every other case)
+        spyOn(platform_module, 'getPlatformDetailsFromDir').and.returnValue(Q(fake_platform));
+        spyOn(platform_addHelper, 'downloadPlatform').and.returnValue(Q(fake_platform));
         spyOn(platform_addHelper, 'getVersionFromConfigFile').and.returnValue(false);
         spyOn(platform_addHelper, 'installPluginsForNewPlatform').and.returnValue(Q());
         platform_api_mock = jasmine.createSpyObj('platform api mock', ['createPlatform', 'updatePlatform']);
         platform_api_mock.createPlatform.and.returnValue(Q());
         platform_api_mock.updatePlatform.and.returnValue(Q());
         spyOn(cordova_util, 'getPlatformApiFunction').and.returnValue(platform_api_mock);
-        spyOn(prepare, 'preparePlatforms').and.returnValue(Q());
         spyOn(platform_metadata, 'save');
     });
     afterEach(function () {
         cfg_parser_revert_mock();
         fetch_revert_mock();
+        prepare_revert_mock();
     });
     describe('error/warning conditions', function () {
         it('should require specifying at least one platform', function (done) {
@@ -102,9 +117,29 @@ describe('cordova/platform/addHelper', function () {
             });
         });
         describe('platform spec inference', function () {
-            // TODO: test these by checking how platform_adDHelper.downloadPlatform was called.
-            it('should assign directories-specified-as-platforms to the final spec we persist');
-            it('should assign URLs-specified-as-platforms to the final spec we persist');
+            // TODO: test these by checking how platform_adDHelper.downloadPlatform OR
+            // platform_module.getPlatformDetailsFromDir were called.
+            it('should retrieve platform details from directories-specified-as-platforms using getPlatformDetailsFromDir', function (done) {
+                cordova_util.isDirectory.and.returnValue(true);
+                var directory_to_platform = '/path/to/cordova-atari';
+                platform_addHelper('add', hooks_mock, projectRoot, [directory_to_platform]).then(function () {
+                    expect(platform_module.getPlatformDetailsFromDir).toHaveBeenCalledWith(directory_to_platform, null);
+                    expect(platform_addHelper.downloadPlatform).not.toHaveBeenCalled();
+                }).fail(function (e) {
+                    fail('fail handler unexpectedly invoked');
+                    console.error(e);
+                }).done(done);
+            });
+            it('should retrieve platform details from URLs-specified-as-platforms using downloadPlatform', function (done) {
+                cordova_util.isUrl.and.returnValue(true);
+                var url_to_platform = 'http://github.com/apache/cordova-atari';
+                platform_addHelper('add', hooks_mock, projectRoot, [url_to_platform]).then(function () {
+                    expect(platform_addHelper.downloadPlatform).toHaveBeenCalledWith(projectRoot, null, url_to_platform, jasmine.any(Object));
+                }).fail(function (e) {
+                    fail('fail handler unexpectedly invoked');
+                    console.error(e);
+                }).done(done);
+            });
             it('should attempt to retrieve from package.json if exists in project');
             it('should attempt to retrieve from config.xml if exists and package.json does not');
             it('should fall back to using pinned version if both package.json and config.xml do not specify it');
@@ -153,129 +188,8 @@ describe('cordova/platform/addHelper', function () {
         it('should invoke plugman.install, giving correct platform, plugin and other arguments');
         it('should include any plugin variables as options when invoking plugman install');
     });
-    /*
-    var projectRoot = path.join('some', 'path'),
-        windowsPath = path.join(projectRoot,'cordova-windows'),
-        configParserRevert,
-        fetchRevert,
-        downloadPlatformRevert,
-        pkgJson = {},
-        configEngines = [],
-        fetchArgs = [];
-
-    // Mock HooksRunner
-    var hooksRunnerMock = {
-        fire: function () {
-            return Q();
-        }
-    };
-
-    // Mock Platform Api
-    function PlatformApiMock() {}
-    PlatformApiMock.createPlatform = function() {
-        return Q();
-    };
-    PlatformApiMock.updatePlatform = function() {
-        return Q();
-    };
-
-    // Mock cordova-fetch
-    var fetchMock = function(target) {
-        fetchArgs.push(target);
-        //return the basename of either the target, url or local path 
-        return Q(path.basename(target));
-    };
-
-    // Mock ConfigParser
-    function ConfigParserMock() {}
-    ConfigParserMock.prototype = {
-        write: function() {
-            //do nothing
-        },
-        addEngine: function(plat, spec) {
-            //add engine to configEngines
-            configEngines.push({'name': plat, 'spec': spec});
-        },
-        removeEngine: function(plat) {
-            //delete engine from configEngines
-            configEngines.forEach(function(item, index) {
-                if(item.name === plat){
-                    delete configEngines[index]; 
-                }
-            });
-        },
-        getEngines: function() {
-            return configEngines;
-        }
-    };
-
-    function getPlatformDetailsFromDirMock(dir, platform) {
-        var ver;
-        var parts = dir.split('@');
-        //attempt to derive version from dir/target
-        //eg dir = android@~6.1.1 || atari@1.0.0
-        if(parts.length > 1) {
-            ver = parts[1] || parts[0];
-            //remove ~ or ^ since the real function version wouldn't have that
-            if(ver[0] === '~' || ver[0] === '^') {
-                ver = ver.slice(1);
-            }
-        }
-        // not a perfect representation of the real function, but good for testing
-		return Q({
-            'libDir':'Api.js',
-            'platform':platform || path.basename(dir),
-            'version':ver || 'n/a'
-        });
-    }
-
-    beforeEach(function () {
-        spyOn(cordova_util, 'projectConfig').and.returnValue(config_xml_path);
-        spyOn(shell, 'mkdir').and.returnValue(true);
-
-        configParserRevert = platform_addHelper.__set__('ConfigParser', ConfigParserMock);
-        fetchRevert = platform_addHelper.__set__('fetch', fetchMock);
-        spyOn(platform, 'getPlatformDetailsFromDir').and.callFake(getPlatformDetailsFromDirMock);
-        spyOn(prepare, 'preparePlatforms').and.returnValue(Q());
-        spyOn(cordova, 'prepare').and.returnValue(Q());
-        spyOn(platformMetadata, 'save').and.returnValue(true);
-        spyOn(cordova_util, 'getPlatformApiFunction').and.returnValue(PlatformApiMock);
-        // writes to package.json
-        spyOn(fs, 'writeFileSync').and.callFake(function (dest, pkgJ) {
-            pkgJson = JSON.parse(pkgJ);
-            return true;
-        });
-
-        // return true for windows local path target
-        spyOn(cordova_util, 'isDirectory').and.callFake(function (filePath) {
-            if (filePath.indexOf(windowsPath) !== -1) {
-                return true;
-            } else {
-                return false;
-            }
-        });
-
-        spyOn(lazy_load, 'git_clone').and.callFake(function (git_url, branch) {
-            return Q(path.basename(git_url));
-        });
-        spyOn(lazy_load, 'based_on_config').and.callFake(function (projRoot, target) {
-            return Q(target);
-        });
-    });
-
-    afterEach(function () {
-        configParserRevert();
-        fetchRevert();
-        if (downloadPlatformRevert) {
-            downloadPlatformRevert();
-            downloadPlatformRevert = undefined;
-        }
-        pkgJson = {};
-        configEngines = [];
-        fetchArgs = [];
-    });
-    */
-
+    // TODO: for the tests below, do we have the test coverage these tests _aim_ to provide already
+    // written up in the specs above? are we sure that these tests exercise code from addHelper.js, or possibly other places? unit tests should test logic local to only one module - not test code of a dependent module.
     xdescribe('old add tests', function () {
         it('should succeed with fetch, save and package.json. Tests npm package, gitURL, local path and non core platforms with spec as targets', function(done) {
             //spy for package.json to exist
